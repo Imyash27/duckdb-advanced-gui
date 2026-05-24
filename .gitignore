@@ -1,0 +1,57 @@
+# DuckDB Advanced GUI — gitignore
+
+# Runtime data (user-specific, potentially sensitive)
+data/
+*.json.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# DuckDB database files (never commit data)
+*.duckdb
+*.duckdb.wal
+*.db
+*.ddb
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temp / uploads
+*.tmp
+*.temp
+uploads/
+
+# Logs
+*.log
+
+# Distribution
+dist/
+build/
+*.egg-info/

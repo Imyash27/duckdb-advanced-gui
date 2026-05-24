@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name            = "duckdb-advanced-gui"
+version         = "2.0.0"
+description     = "A powerful self-hosted web GUI for DuckDB with multi-database support, SQL editor, schema manager, performance tools, and import/export."
+readme          = "README.md"
+license         = {file = "LICENSE"}
+authors         = [{name = "Yash Kanzariya", email = "yashkanzariya50@gmail.com"}]
+keywords        = ["duckdb", "gui", "sql", "database", "analytics", "flask"]
+classifiers     = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+requires-python = ">=3.9"
+dependencies    = [
+    "flask>=3.0.0",
+    "werkzeug>=3.0.0",
+    "duckdb>=1.0.0",
+]
+
+[project.urls]
+Homepage      = "https://github.com/yashkanzariya/duckdb-advanced-gui"
+Repository    = "https://github.com/yashkanzariya/duckdb-advanced-gui"
+Issues        = "https://github.com/yashkanzariya/duckdb-advanced-gui/issues"
+Changelog     = "https://github.com/yashkanzariya/duckdb-advanced-gui/blob/main/CHANGELOG.md"
+
+[project.scripts]
+duckdb-gui = "app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["templates*", "static*"]
