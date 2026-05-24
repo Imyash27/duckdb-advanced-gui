@@ -1,7 +1,8 @@
-# 🦆 DuckDB Advanced GUI
 
 <div align="center">
 
+  # 🦆 DuckDB Advanced GUI
+  
 **A powerful, self-hosted web GUI for DuckDB — built for analysts, data engineers, and developers.**
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
