@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] — 2026-05-24
+
+### Added — Live Monitor & Dashboards
+
+- **📡 Monitor tab** — Grafana-style live performance monitoring, auto-refreshes every 2–30 s (configurable):
+  - Stat cards: total queries, avg/P95/max latency, error rate, DB file size, queries in last 60 s
+  - **Query Latency** line chart (60-second rolling window)
+  - **Queries/second** bar chart
+  - **SQL Type Mix** doughnut chart (SELECT vs INSERT vs UPDATE vs …)
+  - **Error Rate** bar chart
+  - Live query log table (last 20 queries with type, timing, status, SQL preview)
+  - In-memory ring buffer (2 000 events) with zero disk I/O — resets on restart by design
+- **📊 Dashboards tab** — Custom chart panel builder (Grafana-lite):
+  - **8 built-in starter panels** for IOC data (⚡ Load Starter Panels button)
+  - **8 chart types**: Bar · Line · Area · Pie · Doughnut · Scatter · Stat card · Table
+  - **6 colour palettes**: Indigo · Warm · Cool · Rainbow · Monochrome · Traffic light
+  - **Live preview** before saving — run SQL and see the chart instantly in the modal
+  - Auto-refresh per panel (10 s / 30 s / 1 min / 5 min / manual)
+  - One-click suggestion chips for common IOC queries
+  - Edit · Refresh · Delete per panel
+  - Panels persisted to `data/panels.json`
+- **`/api/metrics/live`** — real-time metrics endpoint (60-bucket time series)
+- **`/api/chart/query`** — SQL-to-chart data endpoint
+- **`/api/panels`** GET/POST · **`/api/panels/<id>`** DELETE
+- **`/api/panels/reset`** — restore built-in starter panels
+- Chart.js 4.4 loaded from CDN for all visualisations
+
+---
+
 ## [2.0.0] — 2026-05-24
 
 ### Added

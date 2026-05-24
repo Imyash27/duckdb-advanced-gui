@@ -2,10 +2,11 @@
 DuckDB Advanced GUI — Flask Backend
 Author : Yash Kanzariya
 License: MIT
-Version: 2.0.0
+Version: 2.1.0
 
 Security-hardened REST API for full DuckDB introspection, editing,
-multi-database management, performance tuning, and import/export.
+multi-database management, performance tuning, import/export,
+live metrics monitoring, and custom chart dashboards.
 """
 import os
 import re
@@ -13,6 +14,7 @@ import json
 import time
 import uuid
 import logging
+import collections
 import decimal
 import tempfile
 import threading
@@ -40,9 +42,14 @@ BASE      = Path(__file__).parent
 DATA      = BASE / "data"
 DATA.mkdir(exist_ok=True)
 
-HISTORY_F = DATA / "history.json"
-SAVED_F   = DATA / "saved.json"
-DBS_F     = DATA / "databases.json"
+HISTORY_F  = DATA / "history.json"
+SAVED_F    = DATA / "saved.json"
+DBS_F      = DATA / "databases.json"
+PANELS_F   = DATA / "panels.json"
+
+# ── In-memory metrics ring-buffer (resets on restart — intentional) ────────
+_metrics_buf  : collections.deque = collections.deque(maxlen=2000)
+_metrics_lock = threading.Lock()
 
 # Allowed file extensions for import
 ALLOWED_IMPORT_EXT = {".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet"}
@@ -153,17 +160,29 @@ def save_json(path: Path, data) -> None:
     tmp.replace(path)           # atomic on POSIX
 
 def add_history(sql: str, dur: float, rows: int, error: str = None) -> None:
+    # Persistent history file
     with _lock:
         h = load_json(HISTORY_F, [])
         h.insert(0, {
             "id":    int(time.time() * 1000),
-            "sql":   sql[:4000],        # cap size
+            "sql":   sql[:4000],
             "dur":   round(dur, 4),
             "rows":  rows,
             "error": error,
             "ts":    datetime.now().isoformat(),
         })
         save_json(HISTORY_F, h[:300])
+    # In-memory metrics buffer (live monitoring)
+    sql_type = sql.strip().split()[0].upper()[:16] if sql.strip() else "UNKNOWN"
+    with _metrics_lock:
+        _metrics_buf.append({
+            "ts":       time.time(),
+            "dur":      round(dur, 4),
+            "rows":     rows,
+            "error":    error is not None,
+            "sql_type": sql_type,
+            "sql":      sql[:120],
+        })
 
 # ─── Multi-database management ────────────────────────────────────────────────
 
@@ -1067,6 +1086,170 @@ def api_dashboard():
                       "ioc": ioc, "feeds": feeds})
     except Exception as e:
         return err_resp(str(e), 500, e)
+
+# ─── Live Metrics ─────────────────────────────────────────────────────────────
+
+@app.route("/api/metrics/live")
+def api_metrics_live():
+    """Return real-time performance metrics computed from the in-memory buffer."""
+    now = time.time()
+    with _metrics_lock:
+        buf = list(_metrics_buf)           # snapshot — don't hold lock during compute
+
+    if not buf:
+        # Return zeroed structure so the UI always gets valid JSON
+        empty_series = [{"ts": int(now) - (59 - i), "count": 0, "avg_dur": 0, "errors": 0}
+                        for i in range(60)]
+        return jresp({"total_queries": 0, "total_errors": 0, "error_rate": 0,
+                      "avg_dur": 0, "max_dur": 0, "p95_dur": 0,
+                      "recent_60s": 0, "db_size": 0, "db_size_human": "0 B",
+                      "series": empty_series, "type_dist": [], "recent": []})
+
+    total  = len(buf)
+    errors = sum(1 for m in buf if m["error"])
+    durs   = sorted(m["dur"] for m in buf)
+    avg_d  = sum(durs) / total
+    max_d  = durs[-1]
+    p95_d  = durs[min(int(total * 0.95), total - 1)]
+
+    # 60-second time-series (one bucket per second)
+    series = []
+    for i in range(60):
+        t0 = now - (60 - i)
+        t1 = now - (59 - i)
+        bk = [m for m in buf if t0 <= m["ts"] < t1]
+        series.append({
+            "ts":      int(t0),
+            "count":   len(bk),
+            "avg_dur": round(sum(m["dur"] for m in bk) / len(bk), 4) if bk else 0,
+            "errors":  sum(1 for m in bk if m["error"]),
+        })
+
+    # SQL type distribution
+    from collections import Counter
+    type_counts = Counter(m["sql_type"] for m in buf)
+    type_dist   = [[k, v] for k, v in type_counts.most_common(10)]
+
+    # Recent 20 queries for live log
+    recent = buf[-20:][::-1]
+
+    # Recent 60 s window count
+    recent_60 = sum(1 for m in buf if now - m["ts"] <= 60)
+
+    try:
+        db_path = get_active_db_path()
+        db_size = db_path.stat().st_size if db_path.exists() else 0
+    except Exception:
+        db_size = 0
+
+    return jresp({
+        "total_queries": total,
+        "total_errors":  errors,
+        "error_rate":    round(errors / total, 4),
+        "avg_dur":       round(avg_d, 4),
+        "max_dur":       round(max_d, 4),
+        "p95_dur":       round(p95_d, 4),
+        "recent_60s":    recent_60,
+        "db_size":       db_size,
+        "db_size_human": hs(db_size),
+        "series":        series,
+        "type_dist":     type_dist,
+        "recent":        recent,
+    })
+
+# ─── Custom Dashboard Panels ───────────────────────────────────────────────────
+
+@app.route("/api/panels")
+def api_panels_get():
+    return jresp({"panels": load_json(PANELS_F, [])})
+
+@app.route("/api/panels", methods=["POST"])
+def api_panels_save():
+    body   = request.get_json(silent=True) or {}
+    panels = load_json(PANELS_F, [])
+    pid    = body.get("id", "").strip()
+
+    if pid:
+        # Update existing
+        for i, p in enumerate(panels):
+            if p.get("id") == pid:
+                panels[i] = {**p, **body, "updated": datetime.now().isoformat()}
+                break
+    else:
+        # New panel
+        body["id"]      = str(uuid.uuid4())
+        body["created"] = datetime.now().isoformat()
+        body["updated"] = datetime.now().isoformat()
+        panels.append(body)
+
+    # Cap at 50 panels
+    save_json(PANELS_F, panels[:50])
+    return jresp({"ok": True, "id": body.get("id", pid)})
+
+@app.route("/api/panels/<pid>", methods=["DELETE"])
+def api_panels_delete(pid):
+    panels = [p for p in load_json(PANELS_F, []) if p.get("id") != pid]
+    save_json(PANELS_F, panels)
+    return jresp({"ok": True})
+
+@app.route("/api/panels/reset", methods=["POST"])
+def api_panels_reset():
+    """Restore the built-in starter panels for the active DB."""
+    panels = _build_starter_panels()
+    save_json(PANELS_F, panels)
+    return jresp({"ok": True, "count": len(panels)})
+
+def _build_starter_panels() -> list:
+    """Return pre-built panels if the standard IOC tables exist."""
+    try:
+        con    = get_con()
+        tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+        con.close()
+    except Exception:
+        tables = set()
+
+    panels = []
+    if "ioc_master" in tables:
+        defs = [
+            ("IOC Type Distribution",   "SELECT ioc_type, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC", "doughnut", "rainbow"),
+            ("Threat Type Breakdown",   "SELECT threat_type, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC LIMIT 10", "bar", "warm"),
+            ("Score Distribution",      "SELECT CASE WHEN score>=80 THEN 'High (80+)' WHEN score>=50 THEN 'Medium (50-79)' ELSE 'Low (<50)' END AS band, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC", "pie", "warm"),
+            ("Top Sources",             "SELECT source, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC LIMIT 10", "bar", "cool"),
+            ("Active vs Inactive",      "SELECT CASE WHEN is_active THEN 'Active' ELSE 'Inactive' END AS status, COUNT(*) AS count FROM ioc_master GROUP BY 1", "doughnut", "default"),
+            ("Total Active IOCs",       "SELECT COUNT(*) AS active_iocs FROM ioc_master WHERE is_active=true", "stat", "default"),
+            ("Avg Threat Score",        "SELECT ROUND(AVG(score),1) AS avg_score FROM ioc_master", "stat", "warm"),
+            ("Recent IOC Activity",     "SELECT DATE_TRUNC('day', last_seen) AS day, COUNT(*) AS count FROM ioc_master WHERE last_seen >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 1", "area", "cool"),
+        ]
+        for title, sql, ctype, pal in defs:
+            panels.append({"id": str(uuid.uuid4()), "name": title, "sql": sql,
+                           "chart_type": ctype, "refresh": 60, "palette": pal,
+                           "x_col": "0", "y_col": "1", "y_cols": "1",
+                           "created": datetime.now().isoformat(), "updated": datetime.now().isoformat()})
+    return panels
+
+@app.route("/api/chart/query", methods=["POST"])
+def api_chart_query():
+    """Execute SQL and return data formatted for Chart.js panels."""
+    body  = request.get_json(silent=True) or {}
+    sql   = body.get("sql", "").strip()
+    limit = min(int(body.get("limit", 500)), 5000)
+    if not sql:
+        return err_resp("Empty query")
+    t0 = time.time()
+    try:
+        con = get_con()
+        rel = con.execute(sql)
+        dur = time.time() - t0
+        if not rel.description:
+            con.close()
+            return jresp({"columns": [], "rows": [], "count": 0, "duration": round(dur, 4)})
+        cols = [d[0] for d in rel.description]
+        rows = [ser_row(r) for r in rel.fetchmany(limit)]
+        con.close()
+        return jresp({"columns": cols, "rows": rows,
+                      "count": len(rows), "duration": round(dur, 4)})
+    except Exception as e:
+        return err_resp(str(e), 400, e)
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 

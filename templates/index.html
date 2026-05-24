@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/monokai.min.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 :root{--bg:#0d0f1a;--s1:#151827;--s2:#1c1f30;--s3:#252840;--bd:#2a2d45;--bd2:#363a58;--acc:#f0a500;--acc2:#6366f1;--acc3:#10b981;--txt:#e2e4f0;--txt2:#a0a8c8;--mu:#636888;--red:#ef4444;--grn:#22c55e;--yel:#eab308;--blu:#3b82f6;--pur:#8b5cf6;--sw:220px;--th:42px}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif}
@@ -205,6 +206,25 @@ select option{background:var(--s2)}
 .error-box{background:#3a1010;color:var(--red);padding:10px 14px;border-radius:6px;font-size:12px;font-family:monospace;white-space:pre-wrap;margin:8px}
 /* ── Explain ── */
 .explain-box{background:var(--s3);border:1px solid var(--bd);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;white-space:pre;overflow:auto;color:var(--txt2);line-height:1.6;max-height:400px}
+/* ── Monitor ── */
+.mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;padding:12px}
+.mon-chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;padding:0 12px 12px}
+.mon-chart-card{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px;min-height:230px;display:flex;flex-direction:column}
+.mon-chart-card canvas{flex:1;min-height:170px}
+.mon-lbl{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;font-weight:700}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+/* ── Dashboards ── */
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px;padding:12px}
+.panel-card{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px;display:flex;flex-direction:column;min-height:280px}
+.panel-card canvas{flex:1;min-height:200px}
+.panel-actions{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.panel-actions .panel-name{font-weight:700;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chart-type-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.chart-type-btn{padding:8px 4px;border:1px solid var(--bd);border-radius:5px;background:var(--s2);cursor:pointer;text-align:center;font-size:11px;color:var(--txt2);transition:all .15s}
+.chart-type-btn:hover,.chart-type-btn.selected{border-color:var(--acc);color:var(--acc);background:rgba(240,165,0,.08)}
+.suggestion-chip{display:inline-block;padding:3px 8px;background:var(--s3);border:1px solid var(--bd);border-radius:12px;font-size:10px;cursor:pointer;margin:2px;color:var(--txt2)}
+.suggestion-chip:hover{border-color:var(--acc2);color:var(--acc2)}
 /* ── Col stats ── */
 .col-stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:8px}
 .col-stat-card{background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px}
@@ -254,7 +274,9 @@ select option{background:var(--s2)}
     <div class="main-tab" data-tab="perf"      onclick="showTab('perf',this)">Performance</div>
     <div class="main-tab" data-tab="import"    onclick="showTab('import',this)">Import / Export</div>
     <div class="main-tab" data-tab="ext"       onclick="showTab('ext',this)">Extensions</div>
-    <div class="main-tab" data-tab="funcs"     onclick="showTab('funcs',this)">Functions</div>
+    <div class="main-tab" data-tab="funcs"       onclick="showTab('funcs',this)">Functions</div>
+    <div class="main-tab" data-tab="monitor"     onclick="showTab('monitor',this)">📡 Monitor</div>
+    <div class="main-tab" data-tab="dashboards"  onclick="showTab('dashboards',this)">📊 Dashboards</div>
   </nav>
 
   <!-- DASHBOARD -->
@@ -517,6 +539,68 @@ select option{background:var(--s2)}
   </div>
 </div>
 
+  <!-- ══ MONITOR ══════════════════════════════════════════════ -->
+  <div id="tab-monitor" class="tab-panel" style="flex-direction:column;overflow-y:auto">
+    <div class="toolbar">
+      <span style="font-size:11px;color:var(--mu);font-weight:600">Live Performance Monitor</span>
+      <div class="toolbar-sep"></div>
+      <span style="font-size:11px;color:var(--mu)">Refresh:</span>
+      <select id="mon-interval" onchange="setMonitorInterval(this.value)" style="padding:3px 6px">
+        <option value="2000">2 s</option>
+        <option value="5000" selected>5 s</option>
+        <option value="10000">10 s</option>
+        <option value="30000">30 s</option>
+        <option value="0">Paused</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="refreshMonitor()">↺ Now</button>
+      <div class="spacer"></div>
+      <span id="mon-status" class="badge badge-grn pulse">● LIVE</span>
+      <span id="mon-last-upd" style="font-size:10px;color:var(--mu)"></span>
+    </div>
+    <!-- Stat cards -->
+    <div class="mon-grid" id="mon-cards"></div>
+    <!-- Charts 2×2 grid -->
+    <div class="mon-chart-grid">
+      <div class="mon-chart-card">
+        <div class="mon-lbl">Query Latency (seconds) — last 60 s</div>
+        <canvas id="mon-latency"></canvas>
+      </div>
+      <div class="mon-chart-card">
+        <div class="mon-lbl">Queries / Second — last 60 s</div>
+        <canvas id="mon-qps"></canvas>
+      </div>
+      <div class="mon-chart-card">
+        <div class="mon-lbl">SQL Statement Type Mix</div>
+        <canvas id="mon-types"></canvas>
+      </div>
+      <div class="mon-chart-card">
+        <div class="mon-lbl">Errors per Second — last 60 s</div>
+        <canvas id="mon-errors"></canvas>
+      </div>
+    </div>
+    <!-- Live query log -->
+    <div style="padding:0 12px 14px">
+      <div class="card">
+        <h3>Live Query Log — last 20 queries</h3>
+        <div class="tbl-wrap" style="max-height:220px" id="mon-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ DASHBOARDS ═══════════════════════════════════════════ -->
+  <div id="tab-dashboards" class="tab-panel" style="flex-direction:column;overflow-y:auto">
+    <div class="toolbar">
+      <button class="btn btn-acc btn-sm" onclick="openNewPanel()">+ New Panel</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadStarterPanels()">⚡ Load Starter Panels</button>
+      <div class="spacer"></div>
+      <span id="dash-count" style="font-size:11px;color:var(--mu)"></span>
+      <button class="btn btn-ghost btn-sm" onclick="loadPanels()">↺ Refresh All</button>
+    </div>
+    <div class="dash-grid" id="dash-grid">
+      <div class="empty" style="grid-column:1/-1">No panels yet — click <b>+ New Panel</b> or <b>⚡ Load Starter Panels</b></div>
+    </div>
+  </div>
+
 <!-- ══ MODALS ══════════════════════════════════════════════════ -->
 <div id="modal-overlay" onclick="closeModal(event)">
   <!-- Row Edit -->
@@ -573,6 +657,89 @@ select option{background:var(--s2)}
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-acc" onclick="confirmCreateIndex()">Create</button>
+    </div>
+  </div>
+  <!-- Dashboard Panel Editor -->
+  <div class="modal" id="modal-panel" style="min-width:680px;max-width:900px;max-height:90vh">
+    <div class="modal-head"><h2 id="panel-modal-title">New Panel</h2><button class="close-modal" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;overflow:auto">
+      <!-- Left: config -->
+      <div>
+        <div class="form-row">
+          <label>Panel Title</label>
+          <input id="panel-title" placeholder="IOC Type Distribution" style="width:100%"/>
+        </div>
+        <div class="form-row">
+          <label>SQL Query <span style="color:var(--mu)">(aggregate query — first col = label, rest = values)</span></label>
+          <textarea id="panel-sql" style="height:90px;font-family:monospace;font-size:12px;resize:vertical;width:100%" placeholder="SELECT ioc_type, COUNT(*) FROM ioc_master GROUP BY 1 ORDER BY 2 DESC"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Suggested Queries</label>
+          <div id="panel-suggestions" style="line-height:2"></div>
+        </div>
+        <div class="form-row">
+          <label>Chart Type</label>
+          <div class="chart-type-grid" id="chart-type-grid">
+            <div class="chart-type-btn selected" data-type="bar" onclick="selectChartType('bar',this)">📊<br>Bar</div>
+            <div class="chart-type-btn" data-type="line" onclick="selectChartType('line',this)">📈<br>Line</div>
+            <div class="chart-type-btn" data-type="area" onclick="selectChartType('area',this)">🏔<br>Area</div>
+            <div class="chart-type-btn" data-type="pie" onclick="selectChartType('pie',this)">🥧<br>Pie</div>
+            <div class="chart-type-btn" data-type="doughnut" onclick="selectChartType('doughnut',this)">🍩<br>Donut</div>
+            <div class="chart-type-btn" data-type="scatter" onclick="selectChartType('scatter',this)">⚬<br>Scatter</div>
+            <div class="chart-type-btn" data-type="stat" onclick="selectChartType('stat',this)">🔢<br>Stat</div>
+            <div class="chart-type-btn" data-type="table" onclick="selectChartType('table',this)">📋<br>Table</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-row">
+            <label>Label Column</label>
+            <select id="panel-x-col" style="width:100%"><option value="0">First column</option></select>
+          </div>
+          <div class="form-row">
+            <label>Value Column</label>
+            <select id="panel-y-col" style="width:100%"><option value="1">Second column</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-row">
+            <label>Color Palette</label>
+            <select id="panel-palette" style="width:100%">
+              <option value="default">Indigo (default)</option>
+              <option value="warm">Warm (orange/red)</option>
+              <option value="cool">Cool (blue/teal)</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="mono">Monochrome</option>
+              <option value="traffic">Traffic light</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Auto-Refresh</label>
+            <select id="panel-refresh" style="width:100%">
+              <option value="0">Manual</option>
+              <option value="10">10 s</option>
+              <option value="30" selected>30 s</option>
+              <option value="60">1 min</option>
+              <option value="300">5 min</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-ind" onclick="previewPanel()" style="width:100%;margin-top:4px">▶ Run Preview</button>
+        <div id="panel-preview-meta" style="font-size:10px;color:var(--mu);margin-top:6px;text-align:center"></div>
+      </div>
+      <!-- Right: live preview -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.8px">Live Preview</div>
+        <div style="background:var(--s3);border:1px solid var(--bd);border-radius:6px;padding:12px;flex:1;min-height:300px;position:relative;display:flex;align-items:center;justify-content:center">
+          <canvas id="panel-preview-canvas" style="width:100%;max-height:280px"></canvas>
+          <div id="panel-preview-table" style="width:100%;height:100%;overflow:auto;display:none"></div>
+          <div id="panel-preview-stat" style="display:none;text-align:center"></div>
+          <div id="panel-preview-empty" style="color:var(--mu);font-size:13px;position:absolute">Click "Run Preview" →</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-acc" id="panel-save-btn" onclick="savePanel()" disabled>Save Panel</button>
     </div>
   </div>
   <!-- Add / Open Database -->
@@ -675,11 +842,19 @@ function showTab(name, el) {
   else document.querySelector(`[data-tab="${name}"]`)?.classList.add('active');
   const panel = document.getElementById(`tab-${name}`);
   if (panel) panel.classList.add('active');
-  if (name === 'dashboard') loadDashboard();
-  if (name === 'perf') loadPerf();
-  if (name === 'ext') loadExtensions();
-  if (name === 'funcs') loadFunctions('');
+  if (name === 'dashboard')   loadDashboard();
+  if (name === 'perf')        loadPerf();
+  if (name === 'ext')         loadExtensions();
+  if (name === 'funcs')       loadFunctions('');
   if (name === 'editor' && cm) setTimeout(() => cm.refresh(), 50);
+  if (name === 'monitor') {
+    if (!_MC.latency) initMonitorCharts();
+    refreshMonitor();
+    setMonitorInterval(document.getElementById('mon-interval').value);
+  } else {
+    clearInterval(_monTimer); _monTimer = null;
+  }
+  if (name === 'dashboards')  loadPanels();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1690,6 +1865,470 @@ document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); 
     if (cm) cm.refresh();
   }
 })();
+
+/* ═══════════════════════════════════════════════════════════════
+   CHART.JS GLOBAL CONFIG
+═══════════════════════════════════════════════════════════════ */
+function setupChartDefaults() {
+  if (!window.Chart) return;
+  Chart.defaults.color           = '#a0a8c8';
+  Chart.defaults.borderColor     = '#2a2d45';
+  Chart.defaults.font.family     = "'Segoe UI', system-ui, sans-serif";
+  Chart.defaults.font.size       = 11;
+  Chart.defaults.plugins.legend.labels.boxWidth = 12;
+}
+
+const PALETTES = {
+  default: ['#6366f1','#8b5cf6','#10b981','#3b82f6','#f0a500','#ef4444','#06b6d4','#14b8a6'],
+  warm:    ['#f0a500','#ef4444','#f59e0b','#dc2626','#b45309','#991b1b','#d97706','#7c2d12'],
+  cool:    ['#3b82f6','#10b981','#06b6d4','#0ea5e9','#14b8a6','#6366f1','#0284c7','#0891b2'],
+  rainbow: ['#ef4444','#f0a500','#eab308','#22c55e','#3b82f6','#8b5cf6','#06b6d4','#f97316'],
+  mono:    ['#e2e4f0','#a0a8c8','#636888','#363a58','#2a2d45','#1c1f30','#b0b8d8','#808898'],
+  traffic: ['#22c55e','#eab308','#ef4444','#3b82f6','#8b5cf6','#f0a500','#10b981','#dc2626'],
+};
+
+function hexAlpha(hex, alpha) {
+  try {
+    const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } catch { return hex; }
+}
+
+function makeChartOpts(extra={}) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: {
+      label: ctx => ` ${ctx.dataset.label||''}: ${typeof ctx.raw==='number'?fmtNum(ctx.raw):ctx.raw}`
+    }}},
+    scales: {
+      x: { grid:{color:'#1a1d2e'}, ticks:{maxTicksLimit:10, font:{size:10}} },
+      y: { grid:{color:'#1a1d2e'}, beginAtZero:true, ticks:{font:{size:10}} },
+    },
+    ...extra,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIVE PERFORMANCE MONITOR
+═══════════════════════════════════════════════════════════════ */
+const _MC = {};        // monitor chart instances
+let _monTimer = null;
+const _SEG_COUNT = 60;
+const _segsLabels = Array.from({length:_SEG_COUNT}, (_,i) => `-${_SEG_COUNT-i}s`);
+
+function initMonitorCharts() {
+  if (!window.Chart) return;
+  setupChartDefaults();
+
+  const lineDs = (color) => [{
+    data: new Array(_SEG_COUNT).fill(0),
+    borderColor: color,
+    backgroundColor: hexAlpha(color, 0.15),
+    fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2,
+  }];
+  const barDs = (color) => [{
+    data: new Array(_SEG_COUNT).fill(0),
+    backgroundColor: color,
+    borderRadius: 2,
+  }];
+
+  const lineOpts = makeChartOpts();
+  const barOpts  = makeChartOpts();
+
+  _MC.latency = new Chart(document.getElementById('mon-latency'), {
+    type:'line', data:{labels:[..._segsLabels], datasets:lineDs('#6366f1')}, options:lineOpts
+  });
+  _MC.qps = new Chart(document.getElementById('mon-qps'), {
+    type:'bar', data:{labels:[..._segsLabels], datasets:barDs('#10b981')}, options:barOpts
+  });
+  _MC.errors = new Chart(document.getElementById('mon-errors'), {
+    type:'bar', data:{labels:[..._segsLabels], datasets:barDs('#ef4444')}, options:barOpts
+  });
+  _MC.types = new Chart(document.getElementById('mon-types'), {
+    type:'doughnut',
+    data:{labels:[], datasets:[{data:[], backgroundColor:PALETTES.rainbow}]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{legend:{display:true, position:'right', labels:{boxWidth:10,font:{size:10}}}},
+    },
+  });
+}
+
+async function refreshMonitor() {
+  const data = await api('/api/metrics/live');
+  if (data.error) return;
+
+  // Stat cards
+  const errPct = (data.error_rate * 100).toFixed(1);
+  document.getElementById('mon-cards').innerHTML = [
+    {lbl:'Total Queries', val:fmtNum(data.total_queries), col:'var(--acc2)', sub:'this session'},
+    {lbl:'Avg Latency',   val:fmtDur(data.avg_dur),       col:'var(--grn)',  sub:'all queries'},
+    {lbl:'P95 Latency',   val:fmtDur(data.p95_dur),       col:'var(--yel)',  sub:'95th percentile'},
+    {lbl:'Max Latency',   val:fmtDur(data.max_dur),       col:'var(--red)',  sub:'worst single query'},
+    {lbl:'Error Rate',    val:`${errPct}%`,                col:parseFloat(errPct)>5?'var(--red)':'var(--grn)', sub:`${fmtNum(data.total_errors)} errors total`},
+    {lbl:'DB Size',       val:data.db_size_human,          col:'var(--acc)',  sub:'compressed on disk'},
+    {lbl:'Last 60 s',     val:fmtNum(data.recent_60s),     col:'var(--blu)',  sub:'queries executed'},
+  ].map(c => `<div class="stat-card">
+    <div class="lbl">${c.lbl}</div>
+    <div class="val" style="font-size:20px;color:${c.col};margin-top:4px">${c.val}</div>
+    <div class="sub">${c.sub}</div>
+  </div>`).join('');
+
+  // Update time-series charts
+  if (_MC.latency && data.series?.length) {
+    const s = data.series;
+    _MC.latency.data.datasets[0].data = s.map(p => p.avg_dur);
+    _MC.qps.data.datasets[0].data     = s.map(p => p.count);
+    _MC.errors.data.datasets[0].data  = s.map(p => p.errors);
+    _MC.latency.update('none'); _MC.qps.update('none'); _MC.errors.update('none');
+  }
+
+  // Type distribution doughnut
+  if (_MC.types && data.type_dist?.length) {
+    _MC.types.data.labels            = data.type_dist.map(d => d[0]);
+    _MC.types.data.datasets[0].data  = data.type_dist.map(d => d[1]);
+    _MC.types.update('none');
+  }
+
+  // Live query log
+  if (data.recent?.length) {
+    document.getElementById('mon-log').innerHTML = `
+      <table><thead><tr><th>Time</th><th>Type</th><th>Duration</th><th>Rows</th><th>Status</th><th>SQL preview</th></tr></thead><tbody>
+      ${data.recent.map(q => `<tr>
+        <td style="font-size:10px">${new Date(q.ts*1000).toLocaleTimeString()}</td>
+        <td><span class="badge badge-blu">${esc(q.sql_type||'?')}</span></td>
+        <td class="num-val" style="color:${q.dur>1?'var(--red)':q.dur>0.1?'var(--yel)':'var(--grn)'}">${fmtDur(q.dur)}</td>
+        <td class="num-val">${fmtNum(q.rows)}</td>
+        <td>${q.error?'<span class="badge badge-red">ERR</span>':'<span class="badge badge-grn">OK</span>'}</td>
+        <td style="font-family:monospace;font-size:10px;color:var(--mu);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((q.sql||'').slice(0,80))}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  } else {
+    document.getElementById('mon-log').innerHTML = '<div class="empty">No queries yet — run some SQL in the editor</div>';
+  }
+
+  const now = new Date().toLocaleTimeString();
+  document.getElementById('mon-last-upd').textContent = `Updated ${now}`;
+}
+
+function setMonitorInterval(ms) {
+  clearInterval(_monTimer);
+  const iv = parseInt(ms);
+  const badge = document.getElementById('mon-status');
+  if (iv > 0) {
+    _monTimer = setInterval(refreshMonitor, iv);
+    badge.textContent = '● LIVE'; badge.className = 'badge badge-grn pulse';
+  } else {
+    badge.textContent = '⏸ PAUSED'; badge.className = 'badge badge-yel';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CUSTOM DASHBOARD PANELS
+═══════════════════════════════════════════════════════════════ */
+let _panels       = [];
+let _panelCharts  = {};          // id → Chart instance
+let _panelTimers  = {};          // id → setInterval handle
+let _editPanelId  = null;
+let _previewChart = null;
+let _selectedChartType = 'bar';
+
+// Pre-built query suggestions per table
+const _SUGGESTIONS = [
+  {label:'IOC Types', sql:'SELECT ioc_type, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC'},
+  {label:'Threat Types', sql:'SELECT threat_type, COUNT(*) AS count FROM ioc_master GROUP BY 1 ORDER BY 2 DESC LIMIT 10'},
+  {label:'Score Distribution', sql:"SELECT CASE WHEN score>=80 THEN 'High(80+)' WHEN score>=50 THEN 'Med(50-79)' ELSE 'Low(<50)' END AS band, COUNT(*) AS count FROM ioc_master GROUP BY 1"},
+  {label:'Top Sources', sql:'SELECT source, COUNT(*) AS cnt FROM ioc_master GROUP BY 1 ORDER BY 2 DESC LIMIT 10'},
+  {label:'Active vs Inactive', sql:"SELECT CASE WHEN is_active THEN 'Active' ELSE 'Inactive' END AS st, COUNT(*) AS cnt FROM ioc_master GROUP BY 1"},
+  {label:'Avg Score', sql:'SELECT ROUND(AVG(score),1) AS avg_score FROM ioc_master'},
+  {label:'Total Active', sql:'SELECT COUNT(*) AS active_iocs FROM ioc_master WHERE is_active=true'},
+  {label:'Daily Activity', sql:"SELECT DATE_TRUNC('day',last_seen) AS day, COUNT(*) AS cnt FROM ioc_master WHERE last_seen>=NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1"},
+];
+
+async function loadPanels() {
+  const data = await api('/api/panels');
+  _panels = data.panels || [];
+  document.getElementById('dash-count').textContent =
+    `${_panels.length} panel${_panels.length!==1?'s':''}`;
+  renderPanelGrid();
+}
+
+function renderPanelGrid() {
+  // Clear all timers and chart instances
+  Object.values(_panelTimers).forEach(t => clearInterval(t));
+  Object.values(_panelCharts).forEach(c => { try{c.destroy()}catch{} });
+  _panelTimers = {}; _panelCharts = {};
+
+  const grid = document.getElementById('dash-grid');
+  if (!_panels.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No panels yet — click <b>+ New Panel</b> or <b>⚡ Load Starter Panels</b></div>';
+    return;
+  }
+  grid.innerHTML = _panels.map(p => `
+    <div class="panel-card" id="pc-${esc(p.id)}">
+      <div class="panel-actions">
+        <span class="panel-name" title="${esc(p.name)}">${esc(p.name)}</span>
+        ${p.refresh>0?`<span class="badge badge-mu" style="font-size:9px">↺${p.refresh}s</span>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="refreshPanelById('${esc(p.id)}')" title="Refresh">↺</button>
+        <button class="btn btn-ghost btn-sm" onclick="editPanelById('${esc(p.id)}')" title="Edit">✏</button>
+        <button class="btn btn-red btn-sm" onclick="deletePanelConfirm('${esc(p.id)}')" title="Delete">✕</button>
+      </div>
+      <div style="flex:1;position:relative;min-height:200px">
+        ${p.chart_type==='stat'||p.chart_type==='table'
+          ? `<div id="pcon-${esc(p.id)}" style="height:100%;overflow:auto"></div>`
+          : `<canvas id="pcan-${esc(p.id)}" style="width:100%;height:100%;max-height:220px"></canvas>`}
+      </div>
+      <div id="pstatus-${esc(p.id)}" style="font-size:10px;color:var(--mu);margin-top:5px;text-align:right;min-height:14px"></div>
+    </div>`).join('');
+
+  _panels.forEach(p => {
+    refreshPanelById(p.id);
+    if (p.refresh > 0)
+      _panelTimers[p.id] = setInterval(() => refreshPanelById(p.id), p.refresh * 1000);
+  });
+}
+
+async function refreshPanelById(id) {
+  const p = _panels.find(x => x.id === id);
+  if (!p) return;
+  const stEl = document.getElementById(`pstatus-${id}`);
+  if (stEl) stEl.textContent = 'Loading…';
+  const data = await post('/api/chart/query', {sql: p.sql, limit: 500});
+  if (data.error) { if(stEl) stEl.textContent='✗ '+data.error.slice(0,80); return; }
+  if (stEl) stEl.textContent = `${fmtNum(data.count)} rows · ${fmtDur(data.duration)}`;
+  drawPanelChart(p, data.columns, data.rows, `pcan-${id}`, `pcon-${id}`);
+}
+
+function drawPanelChart(p, cols, rows, canvasId, conId) {
+  if (!window.Chart) return;
+  setupChartDefaults();
+  const pal    = PALETTES[p.palette] || PALETTES.default;
+  const xCol   = parseInt(p.x_col) || 0;
+  const yCol   = parseInt(p.y_col) || 1;
+  const labels = rows.map(r => String(r[xCol] ?? 'null'));
+  const values = rows.map(r => parseFloat(r[yCol]) || 0);
+
+  // Stat card
+  if (p.chart_type === 'stat') {
+    const total = values.reduce((a,b) => a+b, 0);
+    const el = document.getElementById(conId);
+    if (el) el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:6px;padding:20px">
+        <div style="font-size:48px;font-weight:800;color:${pal[0]};line-height:1">${Number.isInteger(total)?fmtNum(total):total.toFixed(2)}</div>
+        <div style="font-size:13px;color:var(--mu)">${esc(cols[yCol]||'')}</div>
+        ${rows.length>1?`<div style="font-size:11px;color:var(--mu);margin-top:4px">${rows.length} rows · first: ${esc(String(labels[0]))}</div>`:''}
+      </div>`;
+    return;
+  }
+
+  // Table view
+  if (p.chart_type === 'table') {
+    const el = document.getElementById(conId);
+    if (el) el.innerHTML = `<table style="width:100%;font-size:11px;border-collapse:collapse">
+      <thead><tr>${cols.map(c=>`<th style="padding:4px 8px;border-bottom:1px solid var(--bd);text-align:left;color:var(--mu)">${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.slice(0,50).map(r=>`<tr>${r.map(v=>`<td style="padding:4px 8px;border-bottom:1px solid #1e2138;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(String(v??''))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+    return;
+  }
+
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (_panelCharts[p.id]) { try{_panelCharts[p.id].destroy()}catch{}; }
+
+  const isRound  = p.chart_type==='pie'||p.chart_type==='doughnut';
+  const chartType = p.chart_type==='area' ? 'line' : p.chart_type;
+
+  _panelCharts[p.id] = new Chart(canvas, {
+    type: chartType,
+    data: {
+      labels,
+      datasets:[{
+        label: cols[yCol] || 'value',
+        data: values,
+        backgroundColor: isRound ? labels.map((_,i)=>pal[i%pal.length]) : p.chart_type==='area' ? hexAlpha(pal[0],.25) : pal[0],
+        borderColor: pal[0],
+        fill: p.chart_type==='area',
+        tension: 0.4,
+        pointRadius: labels.length>30?0:3,
+        borderWidth: 2,
+        borderRadius: chartType==='bar'?3:0,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{display:isRound, position:'bottom', labels:{boxWidth:10,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${typeof ctx.raw==='number'?fmtNum(ctx.raw):ctx.raw}`}},
+      },
+      scales: isRound ? {} : {
+        x:{grid:{color:'#1a1d2e'},ticks:{maxTicksLimit:10,font:{size:10}}},
+        y:{grid:{color:'#1a1d2e'},beginAtZero:true,ticks:{font:{size:10}}},
+      },
+    },
+  });
+}
+
+/* ── Panel Editor Modal ── */
+function selectChartType(type, el) {
+  _selectedChartType = type;
+  document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function openNewPanel() {
+  _editPanelId = null;
+  _selectedChartType = 'bar';
+  document.getElementById('panel-modal-title').textContent = 'New Panel';
+  document.getElementById('panel-title').value  = '';
+  document.getElementById('panel-sql').value    = '';
+  document.getElementById('panel-refresh').value  = '30';
+  document.getElementById('panel-palette').value  = 'default';
+  document.getElementById('panel-x-col').innerHTML = '<option value="0">First column</option>';
+  document.getElementById('panel-y-col').innerHTML = '<option value="1">Second column</option>';
+  document.getElementById('panel-preview-empty').style.display = '';
+  document.getElementById('panel-preview-canvas').style.display = 'block';
+  document.getElementById('panel-preview-table').style.display  = 'none';
+  document.getElementById('panel-preview-stat').style.display   = 'none';
+  document.getElementById('panel-preview-meta').textContent = '';
+  document.getElementById('panel-save-btn').disabled = true;
+  if (_previewChart) { try{_previewChart.destroy()}catch{}; _previewChart=null; }
+  document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type==='bar'));
+  // Populate suggestions
+  document.getElementById('panel-suggestions').innerHTML = _SUGGESTIONS.map(s =>
+    `<span class="suggestion-chip" onclick="applySuggestion(${JSON.stringify(JSON.stringify(s))})">${esc(s.label)}</span>`
+  ).join('');
+  openModal('modal-panel');
+}
+
+function applySuggestion(sStr) {
+  const s = JSON.parse(sStr);
+  document.getElementById('panel-sql').value = s.sql;
+  if (!document.getElementById('panel-title').value) document.getElementById('panel-title').value = s.label;
+}
+
+function editPanelById(id) {
+  const p = _panels.find(x => x.id === id);
+  if (!p) return;
+  _editPanelId = id;
+  _selectedChartType = p.chart_type || 'bar';
+  document.getElementById('panel-modal-title').textContent = 'Edit Panel';
+  document.getElementById('panel-title').value   = p.name;
+  document.getElementById('panel-sql').value     = p.sql;
+  document.getElementById('panel-refresh').value = String(p.refresh||0);
+  document.getElementById('panel-palette').value = p.palette||'default';
+  document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type===p.chart_type));
+  document.getElementById('panel-save-btn').disabled = false;
+  document.getElementById('panel-suggestions').innerHTML = _SUGGESTIONS.map(s =>
+    `<span class="suggestion-chip" onclick="applySuggestion(${JSON.stringify(JSON.stringify(s))})">${esc(s.label)}</span>`
+  ).join('');
+  openModal('modal-panel');
+  previewPanel();
+}
+
+async function previewPanel() {
+  const sql = document.getElementById('panel-sql').value.trim();
+  if (!sql) { toast('Enter a SQL query first','err'); return; }
+  const data = await post('/api/chart/query', {sql, limit:300});
+  if (data.error) { toast(data.error,'err'); return; }
+
+  document.getElementById('panel-save-btn').disabled = false;
+  document.getElementById('panel-preview-meta').textContent =
+    `${fmtNum(data.count)} rows · ${fmtDur(data.duration)} · ${data.columns.length} columns`;
+  document.getElementById('panel-preview-empty').style.display = 'none';
+
+  // Populate col selectors
+  const xSel = document.getElementById('panel-x-col');
+  const ySel = document.getElementById('panel-y-col');
+  xSel.innerHTML = data.columns.map((c,i)=>`<option value="${i}">${esc(c)}</option>`).join('');
+  ySel.innerHTML = data.columns.map((c,i)=>`<option value="${i}" ${i===1?'selected':''}>${esc(c)}</option>`).join('');
+
+  if (_previewChart) { try{_previewChart.destroy()}catch{}; _previewChart=null; }
+
+  const ctype  = _selectedChartType;
+  const pal    = PALETTES[document.getElementById('panel-palette').value] || PALETTES.default;
+  const xCol   = parseInt(xSel.value)||0;
+  const yCol   = parseInt(ySel.value)||1;
+  const labels = data.rows.map(r => String(r[xCol]??''));
+  const values = data.rows.map(r => parseFloat(r[yCol])||0);
+
+  // Show correct element
+  document.getElementById('panel-preview-canvas').style.display = ctype==='stat'||ctype==='table' ? 'none':'block';
+  document.getElementById('panel-preview-table').style.display  = ctype==='table' ? 'block':'none';
+  document.getElementById('panel-preview-stat').style.display   = ctype==='stat'  ? 'flex':'none';
+
+  if (ctype === 'stat') {
+    const total = values.reduce((a,b)=>a+b,0);
+    document.getElementById('panel-preview-stat').innerHTML =
+      `<div style="font-size:52px;font-weight:800;color:${pal[0]};line-height:1">${Number.isInteger(total)?fmtNum(total):total.toFixed(2)}</div>
+       <div style="font-size:13px;color:var(--mu);margin-top:6px">${esc(data.columns[yCol]||'')}</div>`;
+    return;
+  }
+  if (ctype === 'table') {
+    document.getElementById('panel-preview-table').innerHTML = `<table style="width:100%;font-size:11px;border-collapse:collapse">
+      <thead><tr>${data.columns.map(c=>`<th style="padding:4px;border-bottom:1px solid var(--bd);color:var(--mu);text-align:left">${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${data.rows.slice(0,20).map(r=>`<tr>${r.map(v=>`<td style="padding:4px;border-bottom:1px solid #1e2138">${esc(String(v??''))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+    return;
+  }
+
+  const isRound   = ctype==='pie'||ctype==='doughnut';
+  const chartType = ctype==='area'?'line':ctype;
+  setupChartDefaults();
+  _previewChart = new Chart(document.getElementById('panel-preview-canvas'), {
+    type: chartType,
+    data:{labels, datasets:[{
+      label: data.columns[yCol]||'value', data: values,
+      backgroundColor: isRound?labels.map((_,i)=>pal[i%pal.length]):ctype==='area'?hexAlpha(pal[0],.25):pal[0],
+      borderColor:pal[0], fill:ctype==='area', tension:0.4, borderRadius:3,
+      pointRadius:labels.length>30?0:3, borderWidth:2,
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:isRound,position:'bottom',labels:{boxWidth:10,font:{size:10}}},
+               tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtNum(ctx.raw)}`}}},
+      scales:isRound?{}:{
+        x:{grid:{color:'#1a1d2e'},ticks:{maxTicksLimit:8,font:{size:10}}},
+        y:{grid:{color:'#1a1d2e'},beginAtZero:true,ticks:{font:{size:10}}},
+      }},
+  });
+}
+
+async function savePanel() {
+  const name    = document.getElementById('panel-title').value.trim() || 'Untitled Panel';
+  const sql     = document.getElementById('panel-sql').value.trim();
+  const refresh = parseInt(document.getElementById('panel-refresh').value)||0;
+  const palette = document.getElementById('panel-palette').value;
+  const xCol    = document.getElementById('panel-x-col').value;
+  const yCol    = document.getElementById('panel-y-col').value;
+  if (!sql) { toast('SQL query required','err'); return; }
+  const body = { name, sql, chart_type:_selectedChartType, refresh, palette,
+                 x_col:xCol, y_col:yCol, y_cols:yCol };
+  if (_editPanelId) body.id = _editPanelId;
+  const res = await post('/api/panels', body);
+  if (res.error) { toast(res.error,'err'); return; }
+  closeModal();
+  toast(_editPanelId?'Panel updated':'Panel created','ok');
+  loadPanels();
+}
+
+function deletePanelConfirm(id) {
+  const p = _panels.find(x => x.id===id);
+  document.getElementById('modal-confirm-title').textContent = 'Delete Panel?';
+  document.getElementById('modal-confirm-msg').textContent   = `Delete "${p?.name||id}"?`;
+  document.getElementById('modal-confirm-ok').onclick = async () => {
+    await api(`/api/panels/${id}`, {method:'DELETE'});
+    closeModal(); toast('Deleted','ok'); loadPanels();
+  };
+  openModal('modal-confirm');
+}
+
+async function loadStarterPanels() {
+  const res = await post('/api/panels/reset', {});
+  if (res.error) { toast(res.error,'err'); return; }
+  toast(`${res.count} starter panels loaded`,'ok');
+  loadPanels();
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MULTI-DATABASE MANAGEMENT
