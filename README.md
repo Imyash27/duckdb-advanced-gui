@@ -148,25 +148,6 @@ All configuration is via environment variables:
 
 ---
 
-## 🗂️ Project Structure
-
-```
-duckdb-advanced-gui/
-├── app.py              ← Flask backend (REST API)
-├── start.sh            ← Interactive launcher
-├── requirements.txt    ← Python dependencies
-├── templates/
-│   └── index.html      ← Single-page frontend (HTML + CSS + JS)
-├── data/               ← Runtime data (git-ignored)
-│   ├── databases.json  ← Multi-DB registry
-│   ├── history.json    ← Query history
-│   └── saved.json      ← Saved queries
-└── docs/
-    └── screenshots/    ← UI screenshots
-```
-
----
-
 ## 🔒 Security Notes
 
 This tool is designed for **local development and trusted internal networks**.
